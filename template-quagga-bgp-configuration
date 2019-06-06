@@ -1,0 +1,26 @@
+Quagga Configuration:
+--------------------
+
+sudo vtysh
+configure terminal
+router bgp <local-asn>
+ bgp router-id <local-router-id>
+ network <network-address/<cidr>
+ neighbor <peer-bgp-ip-1> remote-as <peer-asn>
+ neighbor <peer-bgp-ip-1> soft-reconfiguration inbound
+ neighbor <peer-bgp-ip-2> remote-as <peer-asn>
+ neighbor <peer-bgp-ip-2> soft-reconfiguration inbound
+exit
+do write memory
+exit
+
+To modify AS PATH if you want to setup Active/Passive BGP:
+---------------------------------------------------------
+sudo vtysh
+configure terminal
+neighbor <peer-bgp-ip-1> route-map <route-map-name> out
+route-map <route-map-name> permit 10
+  set as-path prepend <local-asn> <local-asn>
+exit
+do write memory
+exit
