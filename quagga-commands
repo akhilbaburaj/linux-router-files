@@ -1,0 +1,20 @@
+Quagga Remove Command(config mode):
+----------------------
+no <followed by the entered command>
+
+
+Quagga Show Commands(enable mode):
+--------------------
+show ip route
+show ip bgp 
+show ip bgp neighbor <peer-bgp-ip>
+show ip bgp neighbor <peer-bgp-ip> received-routes
+show ip bgp neighbor <peer-bgp-ip> advertised-routes
+
+Quagga Show Commands(config mode):
+--------------------
+do <show-command>
+
+Quagga Clear Commands(enable mode):
+----------------------
+clear ip bgp <peer-bgp-ip>
