@@ -1,0 +1,29 @@
+Tunnel Interface Configuration:
+ ------------------------------------------------------------------
+For Tunnel Interface 1:
+sudo ip link add tun01 type vti local <LOCAL_Interface_IP> remote <AWS_VPN_Endpoint_IP_1> key <mark_value_of_conn_1>
+sudo ip addr add <Customer_Inside_IP_of_Endpoint_1>/30 remote <AWS_Inside_IP_of_Endpoint_1>/30 dev tun01
+sudo ip link set tun01 up mtu 1419
+ 
+sudo iptables -t mangle -A FORWARD -o tun01 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -d <Local_Interface_IP> -s <AWS_VPN_Endpoint_IP_1> -j MARK --set-xmark <mark_value_of_conn_1>
+------------------------------------------------------------------
+ 
+For Tunnel Interface 2:
+sudo ip link add tun02 type vti local <LOCAL_Inteface_IP> remote <AWS_VPN_Endpoint_IP_2> key <mark_value_of_conn_2>
+sudo ip addr add <Customer_Inside_IP_of_Endpoint_2>/30 remote <AWS_Inside_IP_of_Endpoint_2>/30 dev tun02
+sudo ip link set tun02 up mtu 1419
+ 
+sudo iptables -t mangle -A FORWARD -o tun02 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -d <Local_Interface_IP> -s <AWS_VPN_Endpoint_IP_2> -j MARK --set-xmark <mark_value_of_conn_2>
+------------------------------------------------------------------
+
+
+LEGEND: 
+LOCAL_Inteface_IP - If Interface IP is private then, value is private. 
+AWS_VPN_Endpoint_IP_[ 1 | 2 ] - Actual IP of peer VPN endpoint(s).
+Customer_Inside_IP_of_Endpoint_[ 1 | 2 ] - Local(EC2/VM) virtual tunnel tnterface IP for building BGP peering 
+AWS_Inside_IP_of_Endpoint_[ 1 | 2 ] - Peer(AWS) virtual tunnel interface IP for building BGP peering
+mark_value_of_conn_[ 1 | 2 ] - Mark value used in ipsec.conf for the respect tunnel the interfaces belongs to.
+
+Note: These commands MUST execute at start up via a start up script so it loads at the time of BOOT/REBOOT !!!!
