@@ -1,0 +1,17 @@
+Download the following two files and place them in their respective folders.
+tunnel.sh = https://raw.githubusercontent.com/akhilbaburaj/linux-router-files/master/tunnel.sh
+tunnel-ip-up.service = https://raw.githubusercontent.com/akhilbaburaj/linux-router-files/master/tun-if-ip.service
+
+For tunnel.sh:
+cd /etc/strongswan/
+wget https://raw.githubusercontent.com/akhilbaburaj/linux-router-files/master/tunnel.sh
+chmod +x tunnel.sh
+
+For tunnel-ip-up.service:
+cd /etc/systemd/system/
+wget https://raw.githubusercontent.com/akhilbaburaj/linux-router-files/master/tun-if-ip.service
+systemctl daemon-reload
+systemctl enable tunnel-if-up.service
+systemctl start tunnel-if-up.service
+
+Reboot and test if script loads your interfaces and iptables at start/reboot. 
