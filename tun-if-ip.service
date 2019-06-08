@@ -1,0 +1,11 @@
+[Unit]
+Description=Configures the iptables and tun-if at boot from tunnel.sh script
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/etc/strongswan/tunnel.sh
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target
