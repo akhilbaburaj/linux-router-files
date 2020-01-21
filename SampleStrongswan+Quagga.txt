@@ -1,0 +1,278 @@
+#!/bin/bash
+rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm 
+yum update -y && yum upgrade -y 
+yum install strongswan quagga tcpdump nano nc nload iperf3 telnet curl hping3 traceroute mtr -y
+echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.rp_filter=2" >> /etc/sysctl.conf
+echo "net.ipv4.conf.eth0.disable_xfrm = 1" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.disable_policy = 1" >> /etc/sysctl.conf
+echo "net.ipv4.fib_multipath_hash_policy = 1" >> /etc/sysctl.conf
+echo 'VTYSH_PAGER=more' >>/etc/environment 
+echo 'export VTYSH_PAGER=more' >>/etc/bash.bashrc
+sysctl -p
+sed -i 's/# uniqueids = no/uniqueids = no ###Changed/' /etc/strongswan/ipsec.conf
+#setsebool -P zebra_write_config on
+setenforce 0
+chkconfig strongswan on
+chkconfig zebra on
+chkconfig bgpd on
+echo -e "hostname QuaggaRouter npassword zebran enable password zebra" | tee /etc/quagga/zebra.conf /etc/quagga/bgpd.conf /etc/quagga/vtysh.conf
+echo -e "log file /var/log/quagga/bgpd.logn debug bgp updates" >> /etc/quagga/bgpd.conf
+
+chown quagga.quaggavt /etc/quagga/*.conf
+chmod 640 /etc/quagga/*.conf
+sed -i 's/# uniqueids = no/uniqueids = no ###Changed/' /etc/strongswan/ipsec.conf
+sed -i 's/# install_routes = yes/ install_routes = no ###Changed/' /etc/strongswan/strongswan.d/charon.conf
+sed -i 's/# replay_window = 32/ replay_window = 128 ###Changed/' /etc/strongswan/strongswan.d/charon.conf
+cp /etc/strongswan/strongswan.d/charon-logging.conf /etc/strongswan/strongswan.d/charon-logging.conf.bak
+> /etc/strongswan/strongswan.d/charon-logging.conf
+echo -e "charon {nt filelog {ntt charon {nttt path=/var/log/charon.log nttt append=no nttt default=2 nttt ike_name=yes nttt flush_line = yes nttt time_format = %b %e %T nttt} ntt} n}" > /etc/strongswan/strongswan.d/charon-logging.conf
+sed -i 's/SELINUX=enforcing/SELINUX=permissive ###Changed/' /etc/selinux/config
+echo -e "/var/log/charon.log {ntweeklyntrotate 5ntsize 10Mntcompressntdelaycompressn}" >> /etc/logrotate.d/charonlog.conf
+service zebra start
+service bgpd start
+service strongswan start
+service crond start
+reboot
+
+
+File: /etc/strongswan/ipsec.conf
+--------------------------------
+conn VPN-xxxx-Tunne11
+	auto=start
+	left=%defaultroute
+	leftid=<Local Public IP>
+	right=<AWS VPN Endpoint IP 1>
+	type=tunnel
+	leftauth=psk
+	rightauth=psk
+	keyexchange=ikev1
+	ike=aes128-sha1-modp1024
+	ikelifetime=8h
+	esp=aes128-sha1-modp1024
+	lifetime=1h
+	keyingtries=%forever
+	leftsubnet=0.0.0.0/0
+	rightsubnet=0.0.0.0/0
+	dpddelay=10s
+	dpdtimeout=30s
+	dpdaction=restart
+	mark=<unique number per IPSEC Tunnel eg. 100, 101 etc>
+ 
+conn VPN-xxxx-Tunne12
+	auto=start
+	left=%defaultroute
+	leftid=<Local Public IP>
+	right=<AWS VPN Endpoint IP 2>
+	type=tunnel
+	leftauth=psk
+	rightauth=psk
+	keyexchange=ikev1
+	ike=aes128-sha1-modp1024
+	ikelifetime=8h
+	esp=aes128-sha1-modp1024
+	lifetime=1h
+	keyingtries=%forever
+	leftsubnet=0.0.0.0/0
+	rightsubnet=0.0.0.0/0
+	dpddelay=10s
+	dpdtimeout=30s
+	dpdaction=restart
+	mark=<unique number per IPSEC Tunnel eg. 100, 101 etc>
+ 
+File: /etc/strongswan/ipsec.secrets
+-----------------------------------
+<Local Public IP> <AWS VPN Endpoint IP 1> : PSK "Passw0rd"
+<Local Public IP> <AWS VPN Endpoint IP 2> : PSK "Passw0rd"
+ 
+Tunnel Interface Configuration:
+ ------------------------------------------------------------------
+For Tunnel Interface 1:
+sudo ip link add tun01 type vti local <LOCAL_Interface_IP> remote <AWS_VPN_Endpoint_IP_1> key <mark_value_of_conn_1>
+sudo ip addr add <Customer_Inside_IP_of_Endpoint_1>/30 remote <AWS_Inside_IP_of_Endpoint_1>/30 dev tun01
+sudo ip link set tun01 up mtu 1419
+ 
+sudo iptables -t mangle -A FORWARD -o tun01 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -d <Local_Interface_IP> -s <AWS_VPN_Endpoint_IP_1> -j MARK --set-xmark <mark_value_of_conn_1>
+------------------------------------------------------------------
+ 
+For Tunnel Interface 2:
+sudo ip link add tun02 type vti local <LOCAL_Inteface_IP> remote <AWS_VPN_Endpoint_IP_2> key <mark_value_of_conn_2>
+sudo ip addr add <Customer_Inside_IP_of_Endpoint_2>/30 remote <AWS_Inside_IP_of_Endpoint_2>/30 dev tun02
+sudo ip link set tun02 up mtu 1419
+ 
+sudo iptables -t mangle -A FORWARD -o tun02 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -d <Local_Interface_IP> -s <AWS_VPN_Endpoint_IP_2> -j MARK --set-xmark <mark_value_of_conn_2>
+------------------------------------------------------------------
+ 
+ 
+ 
+ 
+====================================================================================================
+ 
+Sample configuration deployment:
+ 
+EC2 Private IP(eth0): 172.31.13.106
+EC2 Public IP(EIP): 13.229.28.203
+ 
+VPN Endpoint IP1: 52.76.79.134
+CGW Inside IP1: 169.254.31.29/30
+TGW Inside IP1: 169.254.31.30/30
+ 
+VPN Endpoint IP2: 52.77.58.159
+CGW Inside IP2: 169.254.31.238/30
+TGW Inside IP2: 169.254.31.237/30
+ 
+ 
+File: /etc/strongswan/ipsec.conf
+--------------------------------
+conn VPN-Tunne11
+	auto=start
+	left=%defaultroute
+	leftid=13.229.28.203	### EIP of EC2
+	right=52.76.79.134	### TGW Endpoint IP 1
+	type=tunnel
+	leftauth=psk
+	rightauth=psk
+	keyexchange=ikev1
+	ike=aes128-sha1-modp1024
+	ikelifetime=8h
+	esp=aes128-sha1-modp1024
+	lifetime=1h
+	keyingtries=%forever
+	leftsubnet=0.0.0.0/0
+	rightsubnet=0.0.0.0/0
+	dpddelay=10s
+	dpdtimeout=30s
+	dpdaction=restart
+	mark=100		### Mark value '100' for Tunnel 1
+	
+conn VPN-Tunne12
+	auto=start
+	left=%defaultroute
+	leftid=13.229.28.203	### EIP of EC2
+	right=52.77.58.159	### TGW Endpoint IP 2
+	type=tunnel
+	leftauth=psk
+	rightauth=psk
+	keyexchange=ikev1
+	ike=aes128-sha1-modp1024
+	ikelifetime=8h
+	esp=aes128-sha1-modp1024
+	lifetime=1h
+	keyingtries=%forever
+	leftsubnet=0.0.0.0/0
+	rightsubnet=0.0.0.0/0
+	dpddelay=10s
+	dpdtimeout=30s
+	dpdaction=restart
+	mark=101		### Mark value '101' for Tunnel 2
+	
+	
+File: /etc/strongswan/ipsec.secrets	
+----------------------------------
+13.229.28.203 52.76.79.134 : PSK "kgOR0iK3DIkHljMzAg1SheLER14HV0Wy"
+13.229.28.203 52.77.58.159 : PSK "oSpj5i6r4YASBIy4I7LEc5ex7TuSRvYI"	
+ 
+ 
+Tunnel Interface Configuration:
+------------------------------------------------------------------
+ 
+For Tunnel Interface 1:
+sudo ip link add Tunnel1 type vti local 172.31.13.106 remote 52.76.79.134 key 100
+sudo ip addr add 169.254.31.30/30 remote 169.254.31.29/30 dev Tunnel1
+sudo ip link set Tunnel1 up mtu 1419
+ 
+sudo iptables -t mangle -A FORWARD -o Tunnel1 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -s 52.76.79.134 -d 172.31.13.106 -j MARK --set-xmark 100
+ 
+------------------------------------------------------------------
+ 
+For Tunnel Interface 2:
+sudo ip link add Tunnel2 type vti local 172.31.13.106 remote 52.77.58.159 key 101
+sudo ip addr add 169.254.31.238/30 remote 169.254.31.237/30 dev Tunnel2
+sudo ip link set Tunnel2 up mtu 1419
+ 
+sudo iptables -t mangle -A FORWARD -o Tunnel2 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -d 172.31.13.106 -s 52.77.58.159 -j MARK --set-xmark 101
+ 
+------------------------------------------------------------------
+
+Quagga Configuration:
+--------------------
+
+sudo vtysh
+configure terminal
+router bgp 65100
+ bgp router-id 100.100.100.100
+ network 172.31.0.0/16
+ neighbor 169.254.31.29 remote-as 64512
+ neighbor 169.254.31.29 soft-reconfiguration inbound
+ neighbor 169.254.31.238 remote-as 64512
+ neighbor 169.254.31.238 soft-reconfiguration inbound
+ maximum-paths 2
+exit
+do write memory
+exit
+
+To modify AS PATH if you want to setup Active/Passive BGP:
+---------------------------------------------------------
+sudo vtysh
+configure terminal
+router bgp <ASN>
+neighbor <AWS Inside IP> route-map <route-map-name> out
+route-map <route-map-name> permit 10
+  set as-path prepend <CGW ASN> <CGW ASN>
+exit
+do write memory
+exit
+
+sudo vtysh
+configure terminal
+router bgp <ASN>
+neighbor <AWS Inside IP> route-map <route-map-name> in
+route-map <route-map-name> permit 10
+  set local-preference <value>
+
+Quagga Remove Command:
+----------------------
+no <followed by the entered command>
+
+
+Quagga Show Commands:
+--------------------
+show ip route
+show ip bgp 
+show ip bgp neighbor <BGP Peer IP>
+show ip bgp neighbor <BGP Peer IP> received-routes
+show ip bgp neighbor <BGP Peer IP> advertised-routes
+
+Quagga Clear Commands:
+clear ip bgp <BGP Peer IP>
+
+
+[ec2-user@ip-172-31-255-4 ~]$ iperf3 -c 10.0.0.71 -p 80 -t 180 -P 8
+[SUM]   0.00-180.00 sec  40.6 GBytes  1.94 Gbits/sec  9950             sender
+[SUM]   0.00-180.00 sec  40.6 GBytes  1.94 Gbits/sec                  receiver
+
+
+[ec2-user@ip-172-31-255-4 ~]$ iperf3 -c 10.0.0.71 -p 80 -t 180 -P 8 -R
+[SUM]   0.00-180.00 sec  45.9 GBytes  2.19 Gbits/sec  34015             sender
+[SUM]   0.00-180.00 sec  45.9 GBytes  2.19 Gbits/sec                  receiver
+
+
+
+
+
+
+
+
+
+touch /etc/strongswan/up-vti.sh
+echo "#!/bin/bash" >> /etc/strongswan/up-vti.sh
+echo "# Add the 'ip link', 'ip addr' and 'iptables' commands for the tunnel interfaces here." >> /etc/strongswan/up-vti.sh
+echo "# This will not bring down the interfaces however, network reachability will fail." >> /etc/strongswan/up-vti.sh
+echo "# BGP will ensure your packets are routed on active interfaces. This is not the best solution for static VPNs." >> /etc/strongswan/up-vti.sh
+chmod +x /etc/strongswan/up-vti.sh
+echo "@reboot /etc/strongswan/up-vti.sh" >> /etc/crontab
+chkconfig chrond on
